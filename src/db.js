@@ -171,7 +171,7 @@ export function publicSettings() {
 function defaultSettings() {
   return {
     storeName: 'LZ Tech',
-    tagline: 'Acessórios e peças para o seu celular',
+    tagline: 'Acessórios para o seu celular',
     whatsapp: '5521988550673',
     address: 'Rua Exemplo, 123 - Centro',
     city: 'Sua Cidade - UF',
