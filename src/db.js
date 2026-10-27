@@ -115,16 +115,26 @@ export async function initDb() {
           value TEXT NOT NULL
         )`,
 
-        // 5. Colunas adicionais garantidas (compatibilidade com schemas legados)
+        // 5. Tabela de uploads para persistência em ambiente serverless
+        `CREATE TABLE IF NOT EXISTS uploads (
+          id TEXT PRIMARY KEY,
+          filename TEXT NOT NULL UNIQUE,
+          mime_type TEXT NOT NULL,
+          data TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )`,
+
+        // 6. Colunas adicionais garantidas (compatibilidade com schemas legados)
         `ALTER TABLE banners ADD COLUMN IF NOT EXISTS format TEXT NOT NULL DEFAULT 'banner'`,
         `ALTER TABLE banners ADD COLUMN IF NOT EXISTS focus_x DOUBLE PRECISION NOT NULL DEFAULT 0.5`,
         `ALTER TABLE banners ADD COLUMN IF NOT EXISTS focus_y DOUBLE PRECISION NOT NULL DEFAULT 0.5`,
 
-        // 6. Índices para otimização de consultas comuns
+        // 7. Índices para otimização de consultas comuns
         `CREATE INDEX IF NOT EXISTS idx_products_category ON products (category)`,
         `CREATE INDEX IF NOT EXISTS idx_products_active ON products (active)`,
         `CREATE INDEX IF NOT EXISTS idx_banners_position ON banners (position ASC)`,
-        `CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders (created_at DESC)`
+        `CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders (created_at DESC)`,
+        `CREATE INDEX IF NOT EXISTS idx_uploads_filename ON uploads (filename)`
       ]
 
       for (const statement of statements) {

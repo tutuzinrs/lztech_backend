@@ -144,6 +144,35 @@ async function migrate() {
     console.warn('Aviso ao migrar pedidos:', err.message)
   }
 
+  // 5. Migrar imagens locais em uploads/ para o Neon PostgreSQL
+  try {
+    const uploadsPath = path.resolve(DATA_DIR, '..', 'uploads')
+    if (fs.existsSync(uploadsPath)) {
+      const files = fs.readdirSync(uploadsPath)
+      console.log(`Encontrados ${files.length} arquivos na pasta uploads/ local.`)
+      let count = 0
+      for (const file of files) {
+        const fullPath = path.join(uploadsPath, file)
+        const stat = fs.statSync(fullPath)
+        if (stat.isFile() && stat.size > 0 && stat.size <= 8 * 1024 * 1024) {
+          const ext = path.extname(file).toLowerCase()
+          const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg'
+          const base64 = fs.readFileSync(fullPath).toString('base64')
+          await query(
+            `INSERT INTO uploads (id, filename, mime_type, data, created_at)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT (filename) DO NOTHING`,
+            [`upl_${file}`, file, mime, base64, new Date().toISOString()]
+          )
+          count++
+        }
+      }
+      console.log(`✓ ${count} imagens migradas para a tabela uploads do PostgreSQL.`)
+    }
+  } catch (err) {
+    console.warn('Aviso ao migrar uploads:', err.message)
+  }
+
   console.log('--- Migração concluída com sucesso! ---')
   console.log('O banco SQLite original em data/lztech.db continua intacto.')
 }

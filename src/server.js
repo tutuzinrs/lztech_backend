@@ -28,7 +28,33 @@ const PORT = Number(process.env.PORT) || 4000
 
 app.use(cors({ origin: true }))
 app.use(express.json({ limit: '2mb' }))
-app.use('/uploads', express.static(UPLOADS_DIR))
+
+// Servir uploads: primeiro tenta o disco físico, depois consulta o Neon PostgreSQL
+app.get(
+  '/uploads/:filename',
+  asyncHandler(async (req, res) => {
+    const filename = path.basename(req.params.filename)
+    const localFile = path.join(UPLOADS_DIR, filename)
+
+    if (fs.existsSync(localFile)) {
+      return res.sendFile(localFile)
+    }
+
+    try {
+      const row = await queryOne('SELECT mime_type, data FROM uploads WHERE filename = ?', [filename])
+      if (row?.data) {
+        const buffer = Buffer.from(row.data, 'base64')
+        res.setHeader('Content-Type', row.mime_type || 'image/jpeg')
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+        return res.send(buffer)
+      }
+    } catch (err) {
+      console.error('Erro ao buscar imagem no Neon:', err)
+    }
+
+    res.status(404).json({ error: 'Imagem não encontrada.' })
+  })
+)
 
 // Middleware para tratamento consistente de erros assíncronos no Express
 const asyncHandler = (fn) => (req, res, next) => {
@@ -501,16 +527,8 @@ api.put(
 )
 
 // ---------------- Upload ----------------
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
-  filename: (req, file, cb) => {
-    const ext = (path.extname(file.originalname) || '.jpg').toLowerCase()
-    cb(null, `${Date.now()}-${crypto.randomBytes(4).toString('hex')}${ext}`)
-  },
-})
-
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 6 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (/^image\//.test(file.mimetype)) cb(null, true)
@@ -518,13 +536,42 @@ const upload = multer({
   },
 })
 
-api.post('/upload', requireAuth, (req, res) => {
-  upload.single('file')(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.message })
+api.post(
+  '/upload',
+  requireAuth,
+  (req, res, next) => {
+    upload.single('file')(req, res, (err) => {
+      if (err) return res.status(400).json({ error: err.message })
+      next()
+    })
+  },
+  asyncHandler(async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado.' })
-    res.status(201).json({ url: `/uploads/${req.file.filename}` })
+
+    const ext = (path.extname(req.file.originalname) || '.jpg').toLowerCase()
+    const filename = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}${ext}`
+    const id = newId('upl')
+    const base64 = req.file.buffer.toString('base64')
+
+    // Tenta gravar em disco local se permitido (em desenvolvimento local)
+    try {
+      if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true })
+      fs.writeFileSync(path.join(UPLOADS_DIR, filename), req.file.buffer)
+    } catch {
+      // Ignora erro em ambientes de filesystem somente leitura como Vercel
+    }
+
+    // Persiste a imagem de forma permanente no Neon PostgreSQL
+    await query(
+      `INSERT INTO uploads (id, filename, mime_type, data, created_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (filename) DO NOTHING`,
+      [id, filename, req.file.mimetype, base64, now()]
+    )
+
+    res.status(201).json({ url: `/uploads/${filename}` })
   })
-})
+)
 
 // ---------------- Export / Import ----------------
 api.get(
