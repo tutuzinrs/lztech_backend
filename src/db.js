@@ -49,62 +49,93 @@ export function formatSql(text) {
   return text.replace(/\?/g, () => `$${index++}`)
 }
 
+let _isInitialized = false
 let _initPromise = null
+
 export async function initDb() {
+  if (_isInitialized) return
   if (_initPromise) return _initPromise
 
   _initPromise = (async () => {
-    const client = getClient()
+    try {
+      const client = getClient()
 
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS products (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        category TEXT NOT NULL DEFAULT 'acessorios',
-        price DOUBLE PRECISION NOT NULL DEFAULT 0,
-        old_price DOUBLE PRECISION,
-        description TEXT DEFAULT '',
-        stock INTEGER NOT NULL DEFAULT 0,
-        active INTEGER NOT NULL DEFAULT 1,
-        featured INTEGER NOT NULL DEFAULT 0,
-        badge TEXT DEFAULT '',
-        image TEXT DEFAULT '',
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
+      // Cada instrução é executada individualmente para total compatibilidade
+      // com o protocolo de prepared statements do PostgreSQL e driver Neon.
+      const statements = [
+        // 1. Tabela de produtos
+        `CREATE TABLE IF NOT EXISTS products (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          category TEXT NOT NULL DEFAULT 'acessorios',
+          price DOUBLE PRECISION NOT NULL DEFAULT 0,
+          old_price DOUBLE PRECISION,
+          description TEXT DEFAULT '',
+          stock INTEGER NOT NULL DEFAULT 0,
+          active INTEGER NOT NULL DEFAULT 1,
+          featured INTEGER NOT NULL DEFAULT 0,
+          badge TEXT DEFAULT '',
+          image TEXT DEFAULT '',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )`,
 
-      CREATE TABLE IF NOT EXISTS banners (
-        id TEXT PRIMARY KEY,
-        title TEXT DEFAULT '',
-        subtitle TEXT DEFAULT '',
-        image TEXT DEFAULT '',
-        link TEXT DEFAULT '',
-        position INTEGER NOT NULL DEFAULT 0,
-        format TEXT NOT NULL DEFAULT 'banner',
-        focus_x DOUBLE PRECISION NOT NULL DEFAULT 0.5,
-        focus_y DOUBLE PRECISION NOT NULL DEFAULT 0.5,
-        active INTEGER NOT NULL DEFAULT 1,
-        created_at TEXT NOT NULL
-      );
+        // 2. Tabela de banners
+        `CREATE TABLE IF NOT EXISTS banners (
+          id TEXT PRIMARY KEY,
+          title TEXT DEFAULT '',
+          subtitle TEXT DEFAULT '',
+          image TEXT DEFAULT '',
+          link TEXT DEFAULT '',
+          position INTEGER NOT NULL DEFAULT 0,
+          format TEXT NOT NULL DEFAULT 'banner',
+          focus_x DOUBLE PRECISION NOT NULL DEFAULT 0.5,
+          focus_y DOUBLE PRECISION NOT NULL DEFAULT 0.5,
+          active INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL
+        )`,
 
-      CREATE TABLE IF NOT EXISTS orders (
-        id TEXT PRIMARY KEY,
-        number TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pendente',
-        customer TEXT NOT NULL,
-        items TEXT NOT NULL,
-        subtotal DOUBLE PRECISION NOT NULL DEFAULT 0,
-        shipping DOUBLE PRECISION NOT NULL DEFAULT 0,
-        total DOUBLE PRECISION NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
+        // 3. Tabela de pedidos
+        `CREATE TABLE IF NOT EXISTS orders (
+          id TEXT PRIMARY KEY,
+          number TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'pendente',
+          customer TEXT NOT NULL,
+          items TEXT NOT NULL,
+          subtotal DOUBLE PRECISION NOT NULL DEFAULT 0,
+          shipping DOUBLE PRECISION NOT NULL DEFAULT 0,
+          total DOUBLE PRECISION NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )`,
 
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      );
-    `)
+        // 4. Tabela de configurações da loja
+        `CREATE TABLE IF NOT EXISTS settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        )`,
+
+        // 5. Colunas adicionais garantidas (compatibilidade com schemas legados)
+        `ALTER TABLE banners ADD COLUMN IF NOT EXISTS format TEXT NOT NULL DEFAULT 'banner'`,
+        `ALTER TABLE banners ADD COLUMN IF NOT EXISTS focus_x DOUBLE PRECISION NOT NULL DEFAULT 0.5`,
+        `ALTER TABLE banners ADD COLUMN IF NOT EXISTS focus_y DOUBLE PRECISION NOT NULL DEFAULT 0.5`,
+
+        // 6. Índices para otimização de consultas comuns
+        `CREATE INDEX IF NOT EXISTS idx_products_category ON products (category)`,
+        `CREATE INDEX IF NOT EXISTS idx_products_active ON products (active)`,
+        `CREATE INDEX IF NOT EXISTS idx_banners_position ON banners (position ASC)`,
+        `CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders (created_at DESC)`
+      ]
+
+      for (const statement of statements) {
+        await client.query(statement)
+      }
+
+      _isInitialized = true
+    } catch (err) {
+      _initPromise = null
+      throw err
+    }
   })()
 
   return _initPromise
