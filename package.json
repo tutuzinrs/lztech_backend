@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
+    "migrate": "node src/migrate-from-sqlite.js",
     "seed": "node src/db.js --seed"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.2.0",
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "multer": "^2.0.1"

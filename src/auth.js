@@ -11,7 +11,11 @@ function loadSecret() {
     return fs.readFileSync(SECRET_FILE, 'utf8').trim()
   } catch {
     const secret = crypto.randomBytes(32).toString('hex')
-    fs.writeFileSync(SECRET_FILE, secret, 'utf8')
+    try {
+      fs.writeFileSync(SECRET_FILE, secret, 'utf8')
+    } catch {
+      // Ignora erro se o filesystem for somente leitura (ex: Vercel Functions)
+    }
     return secret
   }
 }

@@ -80,11 +80,11 @@ export function haversineKm(a, b) {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
 }
 
-export function shippingConfig(settings = getSettings()) {
+export function shippingConfig(settings = {}) {
   return {
-    freeKm: Math.max(0, Number(settings.deliveryFreeKm ?? 5) || 0),
-    baseFee: Math.max(0, Number(settings.deliveryBaseFee ?? 5) || 0),
-    perKm: Math.max(0, Number(settings.deliveryPerKm ?? 2) || 0),
+    freeKm: Math.max(0, Number(settings?.deliveryFreeKm ?? 5) || 0),
+    baseFee: Math.max(0, Number(settings?.deliveryBaseFee ?? 5) || 0),
+    perKm: Math.max(0, Number(settings?.deliveryPerKm ?? 2) || 0),
   }
 }
 
@@ -95,13 +95,14 @@ export function shippingFee(distanceKm, config = shippingConfig()) {
   return baseFee + perKm * (km - (freeKm + 1))
 }
 
-export function storeQuery(settings = getSettings()) {
-  return [settings.address, settings.city]
+export function storeQuery(settings = {}) {
+  return [settings?.address, settings?.city]
 }
 
-export async function quote(address, city, settings = getSettings()) {
-  const config = shippingConfig(settings)
-  if (!String(settings.address || '').trim()) {
+export async function quote(address, city, settings = null) {
+  const currentSettings = settings || (await getSettings())
+  const config = shippingConfig(currentSettings)
+  if (!String(currentSettings?.address || '').trim()) {
     return { ok: false, reason: 'no-store-address', config }
   }
   if (!String(address || '').trim()) {
@@ -109,7 +110,7 @@ export async function quote(address, city, settings = getSettings()) {
   }
 
   const [store, target] = await Promise.all([
-    geocode(storeQuery(settings)),
+    geocode(storeQuery(currentSettings)),
     geocode([address, city]),
   ])
   if (!store || !target) {
