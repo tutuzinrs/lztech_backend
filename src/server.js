@@ -26,7 +26,37 @@ import { quote, shippingConfig } from './geo.js'
 const app = express()
 const PORT = Number(process.env.PORT) || 4000
 
-app.use(cors({ origin: true }))
+// Middleware para tratamento consistente de erros assíncronos no Express
+function asyncHandler(fn) {
+  return (req, res, next) => {
+    Promise.resolve(fn(req, res, next)).catch(next)
+  }
+}
+
+// Middleware de CORS e Preflight para permitir comunicação entre domínios Vercel
+app.use((req, res, next) => {
+  const origin = req.headers.origin || '*'
+  res.setHeader('Access-Control-Allow-Origin', origin)
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin')
+  res.setHeader('Access-Control-Allow-Credentials', 'true')
+  res.setHeader('Access-Control-Max-Age', '86400')
+
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end()
+  }
+  next()
+})
+
+const corsOptions = {
+  origin: true,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+}
+
+app.use(cors(corsOptions))
+app.options('*', cors(corsOptions))
 app.use(express.json({ limit: '2mb' }))
 
 // Servir uploads: primeiro tenta o disco físico, depois consulta o Neon PostgreSQL
@@ -56,10 +86,7 @@ app.get(
   })
 )
 
-// Middleware para tratamento consistente de erros assíncronos no Express
-const asyncHandler = (fn) => (req, res, next) => {
-  Promise.resolve(fn(req, res, next)).catch(next)
-}
+
 
 const api = express.Router()
 
